@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../models/paper_size.dart';
 import '../models/print_history_item.dart';
 import '../models/printer_device.dart';
 import '../services/image_picker_service.dart';
@@ -32,11 +31,10 @@ class PrinterController extends ChangeNotifier {
   bool permissionsGranted = false;
   bool loadingPrinters = false;
   bool busy = false;
+
   XFile? selectedImage;
   PrinterDevice? connectedPrinter;
   String? lastError;
-
-  PaperSize selectedPaperSize = PaperSize.mm80;
 
   final List<PrinterDevice> _printers = [];
   final List<PrintHistoryItem> _history = [];
@@ -44,17 +42,15 @@ class PrinterController extends ChangeNotifier {
   List<PrinterDevice> get printers => List.unmodifiable(_printers);
   List<PrintHistoryItem> get history => List.unmodifiable(_history);
 
-  void changePaperSize(PaperSize paperSize) {
-    selectedPaperSize = paperSize;
-    _addHistory('Paper size changed', paperSize.label);
-    notifyListeners();
-  }
-
   Future<String?> setup() async {
     permissionsGranted = await _permissionService.requestPrinterPermissions();
     notifyListeners();
 
-    if (!permissionsGranted) return 'Bluetooth permission is required';
+    if (!permissionsGranted) {
+      lastError = 'Bluetooth permission is required';
+      return lastError;
+    }
+
     return refreshPrinters();
   }
 
@@ -64,6 +60,7 @@ class PrinterController extends ChangeNotifier {
 
     try {
       final enabled = await _printerService.isBluetoothEnabled();
+
       if (!enabled) {
         _printers.clear();
         lastError = 'Bluetooth is turned off';
@@ -71,9 +68,11 @@ class PrinterController extends ChangeNotifier {
       }
 
       final devices = await _printerService.getBondedPrinters();
+
       _printers
         ..clear()
         ..addAll(devices);
+
       lastError = devices.isEmpty ? 'No paired printer found' : null;
       return lastError;
     } catch (e) {
@@ -87,11 +86,16 @@ class PrinterController extends ChangeNotifier {
 
   Future<String?> pickImage() async {
     final image = await _imagePickerService.pickPhotoFromGallery();
-    if (image == null) return null;
+
+    if (image == null) {
+      return null;
+    }
 
     selectedImage = image;
+    lastError = null;
     _addHistory('Image selected', image.name);
     notifyListeners();
+
     return 'Image selected';
   }
 
@@ -101,6 +105,7 @@ class PrinterController extends ChangeNotifier {
 
     try {
       final result = await _printerService.connect(device);
+
       if (result.success) {
         connectedPrinter = device;
         lastError = null;
@@ -108,7 +113,7 @@ class PrinterController extends ChangeNotifier {
         return 'Connected to ${device.name}';
       }
 
-      lastError = result.error ?? 'Connection failed';
+      lastError = result.error ?? result.message ?? 'Connection failed';
       return lastError;
     } finally {
       busy = false;
@@ -125,13 +130,15 @@ class PrinterController extends ChangeNotifier {
 
       if (result.success) {
         final printerName = connectedPrinter?.name ?? 'Unknown printer';
+
         connectedPrinter = null;
         lastError = null;
         _addHistory('Disconnected', printerName);
+
         return 'Disconnected successfully';
       }
 
-      lastError = result.error ?? 'Disconnect failed';
+      lastError = result.error ?? result.message ?? 'Disconnect failed';
       return lastError;
     } finally {
       busy = false;
@@ -145,13 +152,16 @@ class PrinterController extends ChangeNotifier {
 
     try {
       final result = await _printerService.printTestReceipt();
+
       if (result.success) {
         _addHistory(
-            'Printed test page', connectedPrinter?.name ?? 'Unknown printer');
+          'Printed test page',
+          connectedPrinter?.name ?? 'Unknown printer',
+        );
         return 'Printed test page';
       }
 
-      lastError = result.error ?? 'Printer not connected';
+      lastError = result.error ?? result.message ?? 'Printer not connected';
       return lastError;
     } finally {
       busy = false;
@@ -161,7 +171,10 @@ class PrinterController extends ChangeNotifier {
 
   Future<String?> printSelectedImage() async {
     final image = selectedImage;
-    if (image == null) return 'Please choose a photo first';
+
+    if (image == null) {
+      return 'Please choose a photo first';
+    }
 
     busy = true;
     notifyListeners();
@@ -169,16 +182,15 @@ class PrinterController extends ChangeNotifier {
     try {
       final result = await _printerService.printImage(
         imagePath: image.path,
-        paperWidth: selectedPaperSize.pixelWidth,
+        paperWidth: 576, // 80mm only
       );
 
       if (result.success) {
-        _addHistory(
-            'Photo printed', '${image.name} - ${selectedPaperSize.label}');
-        return 'Printed photo on ${selectedPaperSize.label} paper';
+        _addHistory('Photo printed', image.name);
+        return 'Printed photo on 80mm paper';
       }
 
-      lastError = result.error ?? 'Image print failed';
+      lastError = result.error ?? result.message ?? 'Image print failed';
       return lastError;
     } finally {
       busy = false;

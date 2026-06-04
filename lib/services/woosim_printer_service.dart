@@ -7,32 +7,51 @@ class WoosimPrinterService {
   static const MethodChannel _channel = MethodChannel('woosim_printer');
 
   Future<bool> isBluetoothEnabled() async {
-    return await _channel.invokeMethod<bool>('isBluetoothEnabled') ?? false;
+    try {
+      final result = await _channel.invokeMethod<bool>('isBluetoothEnabled');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> isConnected() async {
-    return await _channel.invokeMethod<bool>('isConnected') ?? false;
+    try {
+      final result = await _channel.invokeMethod<bool>('isConnected');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<PrinterDevice>> getBondedPrinters() async {
-    final raw = await _channel.invokeMethod<List<dynamic>>('getBondedPrinters');
-    return (raw ?? const [])
-        .whereType<Map<dynamic, dynamic>>()
-        .map(PrinterDevice.fromMap)
+    final result = await _channel.invokeMethod<List<dynamic>>(
+      'getBondedPrinters',
+    );
+
+    return (result ?? [])
+        .map((item) => PrinterDevice.fromMap(Map<dynamic, dynamic>.from(item)))
         .toList();
   }
 
   Future<PrinterOperationResult> connect(PrinterDevice device) async {
-    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'connect',
-      device.toMap(),
-    );
-    return PrinterOperationResult.fromMap(raw);
-  }
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'connect',
+        {
+          'name': device.name,
+          'address': device.address,
+        },
+      );
 
-  // Future<void> disconnect() async {
-  //   await _channel.invokeMethod<void>('disconnect');
-  // }
+      return PrinterOperationResult.fromMap(result);
+    } catch (e) {
+      return PrinterOperationResult(
+        success: false,
+        error: e.toString(),
+      );
+    }
+  }
 
   Future<PrinterOperationResult> disconnect() async {
     try {
@@ -50,19 +69,39 @@ class WoosimPrinterService {
   }
 
   Future<PrinterOperationResult> printTestReceipt() async {
-    final raw =
-        await _channel.invokeMethod<Map<dynamic, dynamic>>('printTestReceipt');
-    return PrinterOperationResult.fromMap(raw);
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'printTestReceipt',
+      );
+
+      return PrinterOperationResult.fromMap(result);
+    } catch (e) {
+      return PrinterOperationResult(
+        success: false,
+        error: e.toString(),
+      );
+    }
   }
 
   Future<PrinterOperationResult> printImage({
     required String imagePath,
     int paperWidth = 576,
   }) async {
-    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'printImage',
-      {'imagePath': imagePath, 'paperWidth': paperWidth},
-    );
-    return PrinterOperationResult.fromMap(raw);
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'printImage',
+        {
+          'imagePath': imagePath,
+          'paperWidth': paperWidth, // 80mm only
+        },
+      );
+
+      return PrinterOperationResult.fromMap(result);
+    } catch (e) {
+      return PrinterOperationResult(
+        success: false,
+        error: e.toString(),
+      );
+    }
   }
 }

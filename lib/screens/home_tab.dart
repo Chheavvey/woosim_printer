@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../models/paper_size.dart';
 import '../models/printer_device.dart';
 import '../widgets/status_pill.dart';
 
@@ -15,8 +14,6 @@ class HomeTab extends StatelessWidget {
     required this.connectedPrinter,
     required this.lastError,
     required this.busy,
-    required this.selectedPaperSize,
-    required this.onChangePaperSize,
     required this.onPickImage,
     required this.onPrintImage,
     required this.onPrintTest,
@@ -27,10 +24,6 @@ class HomeTab extends StatelessWidget {
   final PrinterDevice? connectedPrinter;
   final String? lastError;
   final bool busy;
-
-  final PaperSize selectedPaperSize;
-  final ValueChanged<PaperSize> onChangePaperSize;
-
   final VoidCallback onPickImage;
   final VoidCallback onPrintImage;
   final VoidCallback onPrintTest;
@@ -43,14 +36,11 @@ class HomeTab extends StatelessWidget {
         _HeroPrinterCard(
           permissionsGranted: permissionsGranted,
           connectedPrinter: connectedPrinter,
-          selectedPaperSize: selectedPaperSize,
         ),
         const SizedBox(height: 16),
         _SelectedPhotoCard(
           selectedImage: selectedImage,
           busy: busy,
-          selectedPaperSize: selectedPaperSize,
-          onChangePaperSize: onChangePaperSize,
           onPickImage: onPickImage,
           onPrintImage: onPrintImage,
           onPrintTest: onPrintTest,
@@ -69,12 +59,10 @@ class _HeroPrinterCard extends StatelessWidget {
   const _HeroPrinterCard({
     required this.permissionsGranted,
     required this.connectedPrinter,
-    required this.selectedPaperSize,
   });
 
   final bool permissionsGranted;
   final PrinterDevice? connectedPrinter;
-  final PaperSize selectedPaperSize;
 
   @override
   Widget build(BuildContext context) {
@@ -89,9 +77,9 @@ class _HeroPrinterCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Print photos beautifully on ${selectedPaperSize.label} paper',
-            style: const TextStyle(
+          const Text(
+            'Print photos beautifully on 80mm paper',
+            style: TextStyle(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -111,7 +99,7 @@ class _HeroPrinterCard extends StatelessWidget {
               StatusPill(
                 label: connectedPrinter != null ? 'Connected' : 'Not connected',
               ),
-              StatusPill(label: selectedPaperSize.label),
+              const StatusPill(label: '80mm'),
             ],
           ),
         ],
@@ -124,8 +112,6 @@ class _SelectedPhotoCard extends StatelessWidget {
   const _SelectedPhotoCard({
     required this.selectedImage,
     required this.busy,
-    required this.selectedPaperSize,
-    required this.onChangePaperSize,
     required this.onPickImage,
     required this.onPrintImage,
     required this.onPrintTest,
@@ -133,10 +119,6 @@ class _SelectedPhotoCard extends StatelessWidget {
 
   final XFile? selectedImage;
   final bool busy;
-
-  final PaperSize selectedPaperSize;
-  final ValueChanged<PaperSize> onChangePaperSize;
-
   final VoidCallback onPickImage;
   final VoidCallback onPrintImage;
   final VoidCallback onPrintTest;
@@ -152,10 +134,9 @@ class _SelectedPhotoCard extends StatelessWidget {
           children: [
             Text(
               'Selected photo',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const SizedBox(height: 14),
             if (selectedImage != null)
@@ -171,12 +152,6 @@ class _SelectedPhotoCard extends StatelessWidget {
             else
               const _EmptyPhotoPlaceholder(),
             const SizedBox(height: 14),
-            _PaperSizeSelector(
-              busy: busy,
-              selectedPaperSize: selectedPaperSize,
-              onChangePaperSize: onChangePaperSize,
-            ),
-            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
@@ -191,7 +166,7 @@ class _SelectedPhotoCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: busy ? null : onPrintImage,
                     icon: const Icon(Icons.print_outlined),
-                    label: Text('Print ${selectedPaperSize.label}'),
+                    label: const Text('Print Now'),
                   ),
                 ),
               ],
@@ -207,117 +182,6 @@ class _SelectedPhotoCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _PaperSizeSelector extends StatelessWidget {
-  const _PaperSizeSelector({
-    required this.busy,
-    required this.selectedPaperSize,
-    required this.onChangePaperSize,
-  });
-
-  final bool busy;
-  final PaperSize selectedPaperSize;
-  final ValueChanged<PaperSize> onChangePaperSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Paper size',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _PaperSizeButton(
-                label: '80mm',
-                selected: selectedPaperSize == PaperSize.mm80,
-                onPressed: busy
-                    ? null
-                    : () {
-                        onChangePaperSize(PaperSize.mm80);
-                      },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PaperSizeButton(
-                label: '105mm',
-                selected: selectedPaperSize == PaperSize.mm105,
-                onPressed: busy
-                    ? null
-                    : () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (dialogContext) {
-                            return AlertDialog(
-                              title: const Text('Confirm'),
-                              content: const Text(
-                                'Bạn có muốn chuyển sang 105mm không?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext, false);
-                                  },
-                                  child: const Text('Không'),
-                                ),
-                                FilledButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext, true);
-                                  },
-                                  child: const Text('Có'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-
-                        if (confirm == true) {
-                          onChangePaperSize(PaperSize.mm105);
-                        }
-                      },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _PaperSizeButton extends StatelessWidget {
-  const _PaperSizeButton({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    if (selected) {
-      return FilledButton.icon(
-        onPressed: onPressed,
-        icon: const Icon(Icons.check),
-        label: Text(label),
-      );
-    }
-
-    return OutlinedButton(
-      onPressed: onPressed,
-      child: Text(label),
     );
   }
 }
@@ -372,10 +236,9 @@ class _PrinterStatusCard extends StatelessWidget {
           children: [
             Text(
               'Printer status',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(connectedPrinter?.name ?? 'No printer connected'),
@@ -387,7 +250,9 @@ class _PrinterStatusCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Last issue: $lastError',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
             ],
           ],

@@ -11,69 +11,121 @@ import java.io.OutputStream
 import java.lang.reflect.Method
 import java.util.UUID
 
-class BluetoothPrinterManager(private val context: Context) {
+class BluetoothPrinterManager(
+    private val context: Context
+) {
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
-        (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        val bluetoothManager =
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothManager.adapter
     }
 
     private var socket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
-    private var connectedDevice: PrinterDevice? = null
 
-    fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
-    fun isConnected(): Boolean = socket?.isConnected == true && outputStream != null
+    fun isBluetoothEnabled(): Boolean {
+        return bluetoothAdapter?.isEnabled == true
+    }
+
+    fun isConnected(): Boolean {
+        return socket?.isConnected == true && outputStream != null
+    }
 
     @SuppressLint("MissingPermission")
     fun getBondedPrinters(): List<PrinterDevice> {
         val devices = bluetoothAdapter?.bondedDevices ?: emptySet()
+
         return devices
-            .map { PrinterDevice(it.name ?: "Unknown Printer", it.address) }
-            .sortedBy { it.name.lowercase() }
+            .map {
+                PrinterDevice(
+                    name = it.name ?: "Unknown Printer",
+                    address = it.address
+                )
+            }
+            .sortedBy { it.name }
     }
 
     @SuppressLint("MissingPermission")
     fun connect(device: PrinterDevice): NativePrinterResult {
         disconnect()
-        if (!isBluetoothEnabled()) return NativePrinterResult(false, "Bluetooth is turned off")
 
-        val btDevice = bluetoothAdapter?.bondedDevices?.firstOrNull { it.address == device.address }
-            ?: return NativePrinterResult(false, "Printer not found in paired devices")
-
-        bluetoothAdapter?.cancelDiscovery()
-
-        val candidates = listOfNotNull(
-            runCatching { btDevice.createRfcommSocketToServiceRecord(sppUuid) }.getOrNull(),
-            runCatching { btDevice.createInsecureRfcommSocketToServiceRecord(sppUuid) }.getOrNull(),
-            createFallbackSocket(btDevice)
-        )
-
-        for (candidate in candidates) {
-            try {
-                candidate.connect()
-                socket = candidate
-                outputStream = candidate.outputStream
-                connectedDevice = device
-                return NativePrinterResult(true)
-            } catch (_: Exception) {
-                runCatching { candidate.close() }
+        try {
+            if (!isBluetoothEnabled()) {
+                return NativePrinterResult(
+                    success = false,
+                    error = "Bluetooth is turned off"
+                )
             }
-        }
 
-        return NativePrinterResult(false, "Unable to connect. Make sure printer is paired and supports SPP.")
+            val btDevice = bluetoothAdapter
+                ?.bondedDevices
+                ?.firstOrNull { it.address == device.address }
+
+            if (btDevice == null) {
+                return NativePrinterResult(
+                    success = false,
+                    error = "Printer not found in paired devices"
+                )
+            }
+
+            bluetoothAdapter?.cancelDiscovery()
+
+            val candidates = listOfNotNull(
+                runCatching {
+                    btDevice.createRfcommSocketToServiceRecord(sppUuid)
+                }.getOrNull(),
+                runCatching {
+                    btDevice.createInsecureRfcommSocketToServiceRecord(sppUuid)
+                }.getOrNull(),
+                createFallbackSocket(btDevice)
+            )
+
+            for (candidate in candidates) {
+                try {
+                    candidate.connect()
+
+                    socket = candidate
+                    outputStream = candidate.outputStream
+
+                    return NativePrinterResult(
+                        success = true,
+                        message = "Connected"
+                    )
+                } catch (_: Exception) {
+                    runCatching { candidate.close() }
+                }
+            }
+
+            return NativePrinterResult(
+                success = false,
+                error = "Unable to connect. Make sure printer is paired and supports SPP."
+            )
+        } catch (e: Exception) {
+            return NativePrinterResult(
+                success = false,
+                error = e.message ?: "Bluetooth connection failed"
+            )
+        }
     }
 
     fun disconnect() {
         runCatching { outputStream?.flush() }
         runCatching { outputStream?.close() }
         runCatching { socket?.close() }
+
         outputStream = null
         socket = null
-        connectedDevice = null
     }
 
     fun printTestReceipt(): NativePrinterResult {
-        val os = outputStream ?: return NativePrinterResult(false, "Printer not connected")
+        val os = outputStream
+            ?: return NativePrinterResult(
+                success = false,
+                error = "Printer not connected"
+            )
+
         return try {
             os.write(EscPos.initialize())
             os.write(EscPos.alignCenter())
@@ -83,20 +135,48 @@ class BluetoothPrinterManager(private val context: Context) {
             os.write("80mm test page\n\n".toByteArray())
             os.write(EscPos.feed(3))
             os.flush()
-            NativePrinterResult(true)
+
+            NativePrinterResult(
+                success = true,
+                message = "Printed test page"
+            )
         } catch (e: Exception) {
-            NativePrinterResult(false, e.message ?: "Print failed")
+            NativePrinterResult(
+                success = false,
+                error = e.message ?: "Print failed"
+            )
         }
     }
 
-    fun printImage(imagePath: String, paperWidth: Int): NativePrinterResult {
-        val os = outputStream ?: return NativePrinterResult(false, "Printer not connected")
-        if (imagePath.isBlank()) return NativePrinterResult(false, "Image path is empty")
+    fun printImage(
+        imagePath: String,
+        paperWidth: Int
+    ): NativePrinterResult {
+        val os = outputStream
+            ?: return NativePrinterResult(
+                success = false,
+                error = "Printer not connected"
+            )
+
+        if (imagePath.isBlank()) {
+            return NativePrinterResult(
+                success = false,
+                error = "Image path is empty"
+            )
+        }
 
         return try {
             val bitmap = BitmapFactory.decodeFile(imagePath)
-                ?: return NativePrinterResult(false, "Unable to decode selected image")
-            val prepared = ThermalImageConverter.prepareForWoosim(bitmap, paperWidth)
+                ?: return NativePrinterResult(
+                    success = false,
+                    error = "Unable to decode image"
+                )
+
+            val prepared = ThermalImageConverter.prepareForWoosim(
+                source = bitmap,
+                requestedWidth = paperWidth
+            )
+
             os.write(EscPos.initialize())
             os.write(EscPos.alignCenter())
             os.write(EscPos.lineSpacing24())
@@ -104,16 +184,26 @@ class BluetoothPrinterManager(private val context: Context) {
             os.write(EscPos.defaultLineSpacing())
             os.write(EscPos.feed(4))
             os.flush()
-            NativePrinterResult(true)
+
+            NativePrinterResult(
+                success = true,
+                message = "Photo printed"
+            )
         } catch (e: Exception) {
-            NativePrinterResult(false, e.message ?: "Image print failed")
+            NativePrinterResult(
+                success = false,
+                error = e.message ?: "Image print failed"
+            )
         }
     }
 
     @SuppressLint("MissingPermission")
     private fun createFallbackSocket(device: BluetoothDevice): BluetoothSocket? {
         return try {
-            val method: Method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+            val method: Method = device.javaClass.getMethod(
+                "createRfcommSocket",
+                Int::class.javaPrimitiveType
+            )
             method.invoke(device, 1) as? BluetoothSocket
         } catch (_: Exception) {
             null
